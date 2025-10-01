@@ -6,13 +6,37 @@ on:
   workflow_dispatch: {}
 
 permissions:
-  contents: write  # needed to push README updates
+  contents: write  # allow committing README updates
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Bootstrap README markers
+        shell: bash
+        env:
+          STAR_TARGET_PATH: ${{ vars.STAR_TARGET_PATH }}
+        run: |
+          set -euo pipefail
+          target="${STAR_TARGET_PATH:-README.md}"
+          mkdir -p "$(dirname "$target")"
+          touch "$target"
+          has_start=0; has_end=0
+          if grep -Eqi '<!--\s*CATALOG:START\s*-->' "$target"; then has_start=1; fi
+          if grep -Eqi '<!--\s*CATALOG:END\s*-->' "$target"; then has_end=1; fi
+          if [ "$has_start" -eq 0 ] || [ "$has_end" -eq 0 ]; then
+            {
+              echo ""
+              echo "<!-- CATALOG:START -->"
+              echo "(pending first run)"
+              echo "<!-- CATALOG:END -->"
+            } >> "$target"
+            echo "Inserted markers into $target"
+          else
+            echo "Markers already present in $target"
+          fi
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -28,12 +52,13 @@ jobs:
         env:
           STAR_FETCH_TOKEN: ${{ secrets.STAR_FETCH_TOKEN }}
           STAR_TARGET_USERNAME: ${{ secrets.STAR_TARGET_USERNAME }}
-          STAR_GROUP_MODE: topic
+          STAR_GROUP_MODE: ${{ vars.STAR_GROUP_MODE }}
+          STAR_TARGET_PATH: ${{ vars.STAR_TARGET_PATH }}
         run: |
           python scripts/fetch_and_render.py
 
       - name: Commit & push if changed
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "chore: refresh stars catalog (topic-first) [skip ci]"
+          commit_message: "chore: refresh stars catalog (bootstrap + topic-first) [skip ci]"
           branch: ${{ github.ref_name }}

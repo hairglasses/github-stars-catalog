@@ -4,13 +4,13 @@ from typing import Dict, Any, List, Optional, Tuple
 from jinja2 import Template
 
 HERE = pathlib.Path(__file__).resolve().parent.parent
-README = HERE / "README.md"
+TARGET_PATH = os.getenv("STAR_TARGET_PATH", "README.md")
+README = HERE / TARGET_PATH
 TPL_TOPIC = HERE / "templates" / "readme_section.topic.j2"
 TPL_LANG  = HERE / "templates" / "readme_section.language.j2"
 
 GQL_URL = "https://api.github.com/graphql"
 REST_STARS_URL_PUBLIC = "https://api.github.com/users/{username}/starred"
-REST_STARS_URL_AUTHED = "https://api.github.com/user/starred"
 
 TOPIC_LIMIT_PER_REPO = int(os.getenv("TOPIC_LIMIT_PER_REPO", "50"))  # GraphQL nodes per repo (1..100)
 TOPIC_MAX_GROUPS = int(os.getenv("TOPIC_MAX_GROUPS", "200"))
@@ -134,14 +134,25 @@ def index_language_first(repos: List[Dict[str, Any]]):
         v.sort(key=lambda x: (-(x.get("stars") or 0), x["name_with_owner"].lower()))
     return by_language, sorted(languages)
 
-def replace_between_markers(full_text: str, new_section: str, start="<!-- CATALOG:START -->", end="<!-- CATALOG:END -->") -> str:
-    pattern = re.compile(rf"({re.escape(start)})(.*?)[\\r\\n]+({re.escape(end)})", re.DOTALL)
-    if not pattern.search(full_text):
-        raise RuntimeError("Markers not found in README.md")
-    return pattern.sub(lambda m: f"{m.group(1)}\\n{new_section}\\n{m.group(3)}", full_text)
+def upsert_marked_section(full_text: str, new_section: str) -> tuple[str, bool]:
+    """
+    Replace catalog section if markers exist (tolerant to whitespace/case).
+    If markers are missing, append a fresh block at the end.
+    Returns (updated_text, inserted_markers).
+    """
+    start_re = r"<!--\s*CATALOG:START\s*-->"
+    end_re   = r"<!--\s*CATALOG:END\s*-->"
+    pat = re.compile(rf"({start_re})(.*?)(?:\r?\n)({end_re})", re.DOTALL | re.IGNORECASE)
+    m = pat.search(full_text)
+    if m:
+        replaced = pat.sub(lambda mm: f"{mm.group(1)}\n{new_section}\n{mm.group(3)}", full_text)
+        return replaced, False
+    base = full_text.rstrip() + ("\n\n" if full_text.strip() else "")
+    block = f"<!-- CATALOG:START -->\n{new_section}\n<!-- CATALOG:END -->\n"
+    return base + block, True
 
 def render(repos: List[Dict[str, Any]]) -> str:
-    if STAR_GROUP_MODE == "language":
+    if os.getenv("STAR_GROUP_MODE", "topic").strip().lower() == "language":
         tpl = Template(TPL_LANG.read_text(encoding="utf-8"))
         by_language, languages = index_language_first(repos)
         return tpl.render(repos=repos, by_language=by_language, languages=languages).strip()
@@ -160,11 +171,16 @@ def main():
     if not repos:
         repos = fetch_stars_rest(token, username)
     section = render(repos)
-    readme_text = README.read_text(encoding="utf-8")
-    updated = replace_between_markers(readme_text, section)
+    try:
+        readme_text = README.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        # If a custom target path doesn't exist, create its parent directory
+        README.parent.mkdir(parents=True, exist_ok=True)
+        readme_text = ""
+    updated, inserted = upsert_marked_section(readme_text, section)
     if updated != readme_text:
         README.write_text(updated, encoding="utf-8")
-        print("README.md updated.")
+        print(f"{TARGET_PATH} updated." + (" (inserted missing markers)" if inserted else ""))
     else:
         print("No changes.")
 
