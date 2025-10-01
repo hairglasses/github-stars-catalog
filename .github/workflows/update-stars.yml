@@ -1,0 +1,38 @@
+name: Update Stars Catalog
+
+on:
+  schedule:
+    - cron: '0 */12 * * *'  # every 12 hours
+  workflow_dispatch: {}
+
+permissions:
+  contents: write  # needed to push README updates
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Generate catalog
+        env:
+          STAR_FETCH_TOKEN: ${{ secrets.STAR_FETCH_TOKEN }}
+          STAR_TARGET_USERNAME: ${{ secrets.STAR_TARGET_USERNAME }}
+        run: |
+          python scripts/fetch_and_render.py
+
+      - name: Commit & push if changed
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: refresh stars catalog [skip ci]"
+          branch: ${{ github.ref_name }}
