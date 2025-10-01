@@ -1,0 +1,20 @@
+{% macro repo_line(r) -%}
+- [{{ r.name_with_owner }}]({{ r.url }}){% if r.description %} — {{ r.description | replace('\n',' ') }}{% endif %}
+  {% set meta = [] -%}
+  {% if r.topics %}{% set _ = meta.append(r.topics | map('lower') | list | join(', ')) %}{% endif -%}
+  {% if r.stars %}{% set _ = meta.append('⭐ ' ~ r.stars) %}{% endif -%}
+  {% if meta %}<sub>{{ meta | join(' • ') }}</sub>{% endif %}
+{%- endmacro %}
+
+<!-- CATALOG:START -->
+## Summary
+Total starred repos: **{{ repos|length }}**
+Languages seen: {{ languages|list|sort|join(', ') }}
+
+{% for lang, items in by_language|dictsort %}
+### {{ lang }}
+{% for r in items %}
+{{ repo_line(r) }}
+{% endfor %}
+{% endfor %}
+<!-- CATALOG:END -->

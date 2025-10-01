@@ -2,7 +2,7 @@ name: Update Stars Catalog
 
 on:
   schedule:
-    - cron: '0 */12 * * *'  # every 12 hours
+    - cron: '0 */12 * * *'  # every 12 hours (UTC)
   workflow_dispatch: {}
 
 permissions:
@@ -24,15 +24,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Generate catalog
+      - name: Generate catalog (topic-first)
         env:
           STAR_FETCH_TOKEN: ${{ secrets.STAR_FETCH_TOKEN }}
           STAR_TARGET_USERNAME: ${{ secrets.STAR_TARGET_USERNAME }}
+          STAR_GROUP_MODE: topic
         run: |
           python scripts/fetch_and_render.py
 
       - name: Commit & push if changed
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "chore: refresh stars catalog [skip ci]"
+          commit_message: "chore: refresh stars catalog (topic-first) [skip ci]"
           branch: ${{ github.ref_name }}
